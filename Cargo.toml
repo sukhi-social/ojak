@@ -3,6 +3,8 @@ members = [
   "crates/ojak",
   "crates/ojak-axum",
   "crates/ojak-jsonld",
+  "crates/ojak-nif",
+  "crates/ojak-nif-core",
   "crates/ojak-postgres",
   "crates/ojak-redis",
   "crates/ojak-sig",

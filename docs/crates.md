@@ -107,6 +107,20 @@ Integrations
 [axum]: https://github.com/tokio-rs/axum
 
 
+Elixir
+------
+
+ -  *ojak-nif*: Ojak's signatures and JSON-LD as an Erlang NIF library, with
+    the Elixir package that loads it under *crates/ojak-nif/elixir*.  For an
+    application whose backend is Elixir and which keeps its queue, its HTTP
+    and its storage there: it checks and makes signatures, and reads
+    JSON-LD, which is the subtle and heavy part.  It does no I/O and never
+    reads the clock.
+
+ -  *ojak-nif-core*: What *ojak-nif* does, in plain Rust, so that it is tested
+    without a BEAM.
+
+
 Tooling
 -------
 
