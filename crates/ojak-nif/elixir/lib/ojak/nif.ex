@@ -1,75 +1,27 @@
 defmodule Ojak.Nif do
-  @moduledoc """
-  Ojak's signatures and JSON-LD.
-
-  This is the part of an ActivityPub server that is both subtle and heavy:
-  checking and making HTTP signatures, object integrity proofs and Linked Data
-  Signatures, and reading JSON-LD. It does **no I/O**. You fetch keys and
-  documents, you queue and send, and you keep the time; this checks and makes.
-
-  ## How it behaves
-
-    * **JSON is a map.** A document is what a JSON library gives you: maps with
-      string keys, lists, strings, numbers, booleans and `nil`. Nothing is
-      parsed here.
-
-    * **Time is an argument**, in seconds since the Unix epoch, never read
-      from the clock. A test can say what time it is.
-
-    * **Slow calls run on dirty CPU schedulers**: RSA, JSON-LD, post-quantum
-      signatures. They are safe to call from any process. The dirty
-      schedulers are as many as the CPUs, so bound what you let in: cap the
-      size of a body before you hand it over.
-
-    * **Content that is wrong comes back as `{:error, reason}`.** Only a call
-      whose *shape* is wrong (a reference that is not a reference, an integer
-      that is not one) raises `ArgumentError`, because that is a bug in the
-      caller, not something a stranger sent.
-
-    * **Private keys stay in references.** `rsa_private_key/1` parses a key
-      once into an opaque reference, which signing then takes. The key does not
-      come back out. Parsing costs more than signing, so keep the reference
-      (in a `:persistent_term`, or in the process that signs) and parse once.
-
-  ## Receiving a request
-
-  Checking a signed request takes three steps, kept apart so that you can put
-  your own work between them:
-
-      request = {"POST", "/users/alice/inbox", headers, body}
-
-      with {:ok, signature, info} <- Ojak.Nif.signature_parse(request),
-           :ok <- Ojak.Nif.signature_check(signature, request, ["example.com"], 3600, now),
-           # info.key_id says which key; fetch the actor, then:
-           {:ok, key} when key != nil <- Ojak.Nif.published_key(actor, info.key_id),
-           :ok <- Ojak.Nif.signature_verify(signature, request, key) do
-        :verified
-      end
-
-  `signature_check/5` refuses a signature that does not cover the body (its
-  digest), the host and the time, *before* you fetch a key for a stranger.
-  `published_key/2` is the other half of the claim a key ID makes: the key ID
-  says which actor it belongs to, and the actor has to say so too, or anyone
-  who can put a key on a server could sign as any actor there.
-
-  A request is `{method, path_and_query, headers, body}`, `headers` being a
-  list of `{name, value}`; names may be in any case.
-
-  ## Errors
-
-  A reason is an atom, or a tuple of an atom and a detail:
-  `:unsigned`, `{:malformed, text}`, `{:not_covered, name}`,
-  `{:missing_header, name}`, `:digest_mismatch`, `{:stale, seconds}`,
-  `{:expired, seconds}`, `{:wrong_host, host}`, `:invalid` or
-  `{:invalid, text}` (the signature does not verify), `{:key, text}`,
-  `{:wrong_key, text}`, `{:unsupported, text}`, `{:missing, text}`,
-  `{:jsonld, text}` and `{:invalid_argument, text}`.
-  """
+  @moduledoc false
+  # The Rust library as it is. Use `Ojak.HTTPSignature`, `Ojak.Proof`,
+  # `Ojak.LinkedDataSignature`, `Ojak.JsonLd` and `Ojak.Key`; their
+  # documentation says how this behaves, and this module's functions and
+  # types are for them. The notes that follow are the contract they rely on.
+  #
+  #   * A JSON document is a map with string keys, as a JSON library decodes it.
+  #   * Time is an argument, in seconds since the Unix epoch.
+  #   * Anything that can take a millisecond runs on a dirty CPU scheduler.
+  #   * Wrong content comes back as `{:error, reason}`; a call of the wrong
+  #     shape raises `ArgumentError`.
+  #   * A reason is an atom, or an atom and a detail: `:unsigned`,
+  #     `{:malformed, text}`, `{:not_covered, name}`, `{:missing_header, name}`,
+  #     `:digest_mismatch`, `{:stale, seconds}`, `{:expired, seconds}`,
+  #     `{:wrong_host, host}`, `:invalid` and `{:invalid, text}`, `{:key, text}`,
+  #     `{:wrong_key, text}`, `{:unsupported, text}`, `{:missing, text}`,
+  #     `{:jsonld, text}` and `{:invalid_argument, text}`.
 
   @on_load :load_nif
 
   @typedoc "A JSON document, as a JSON library decodes it."
-  @type json :: nil | boolean() | number() | String.t() | [json()] | %{optional(String.t()) => json()}
+  @type json ::
+          nil | boolean() | number() | String.t() | [json()] | %{optional(String.t()) => json()}
 
   @typedoc "`{method, path_and_query, [{name, value}], body}`"
   @type request :: {String.t(), String.t(), [{String.t(), String.t()}], binary()}

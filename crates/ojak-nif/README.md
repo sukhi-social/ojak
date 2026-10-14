@@ -22,8 +22,8 @@ Layout
  -  *../ojak-nif-core*: What they do, in plain Rust, tested by `cargo test`.
     It is apart because a library that calls `enif_*` cannot be linked into a
     test binary.
- -  *elixir*: The Mix project.  `Ojak.Nif` documents each function and its
-    types, and *elixir/test* tests the whole through a real VM.
+ -  *elixir*: The Mix project, and *elixir/test*, which tests the whole through
+    a real VM.
 
 The split follows [Feder]'s: protocol decisions as functions of the facts they
 are given, with no state kept, and the platform around them.
@@ -44,18 +44,36 @@ mix test
 faster and runs RSA far slower.  Erlang/OTP 22 or later, and Elixir 1.14 or
 later, are needed; the Elixir side has no dependencies.
 
-Checking a request is three steps, kept apart so that the application's own
-work, fetching the actor, goes between them:
+The interface is `Ojak.HTTPSignature`, `Ojak.Proof`, `Ojak.LinkedDataSignature`,
+`Ojak.JsonLd` and `Ojak.Key`, each documented in its own module.  Every
+function returns `{:ok, value}` or `{:error, reason}`, and has a `!` twin that
+raises `Ojak.Error`.  The time is the current one unless `now:` says otherwise.
+`Ojak.Nif` is the Rust library as it is, for these to build on, and not part of
+the interface.
+
+An inbox checks a request with the function that finds the key passed in, so
+that fetching and caching stay the application's:
 
 ~~~~ elixir
-request = {"POST", "/users/alice/inbox", headers, body}
+request = Ojak.Request.from_conn(conn, conn.assigns.raw_body)
 
-with {:ok, signature, info} <- Ojak.Nif.signature_parse(request),
-     :ok <- Ojak.Nif.signature_check(signature, request, ["example.com"], 3600, now),
-     {:ok, key} when key != nil <- Ojak.Nif.published_key(actor, info.key_id),
-     :ok <- Ojak.Nif.signature_verify(signature, request, key) do
-  :verified
+with {:ok, signed} <-
+       Ojak.HTTPSignature.verify(request,
+         hosts: ["example.com"],
+         fetch_key: &MyApp.Remote.actor_for_key/1
+       ),
+     {:ok, activity} <- Ojak.JsonLd.normalize(params),
+     true <- activity["actor"] == signed.owner do
+  MyApp.Inbox.enqueue(activity)
 end
+~~~~
+
+and signs what it sends, for whichever HTTP client it uses:
+
+~~~~ elixir
+{:ok, key} = Ojak.Key.generate(:rsa)
+{:ok, signed} = Ojak.HTTPSignature.sign("POST", inbox, body, key, key_id: key_id)
+Req.post!(inbox, body: body, headers: signed ++ [{"content-type", "application/activity+json"}])
 ~~~~
 
 
