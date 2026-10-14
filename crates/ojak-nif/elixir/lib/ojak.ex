@@ -44,5 +44,19 @@ defmodule Ojak do
 
   The functions of `Ojak.Nif` are the Rust library as it is, without these
   conveniences; they are not part of the interface, and may change.
+
+  ## What to know
+
+    * It has been run on Linux x86_64 with Elixir 1.14 and OTP 25, and not
+      elsewhere, and not federated with a real server from Elixir.
+    * Signed `GET` requests (authorized fetch) and response signatures are not
+      exposed yet.
+    * JSON-LD resolves only the contexts Ojak ships and those you add; terms
+      from any other are dropped, and `Ojak.JsonLd.normalize_with_report/2`
+      says which.
+    * There is no precompiled library: building needs a Rust toolchain.
+    * The licence is AGPL-3.0-only.
+
+  The package's README lists these, and what is not yet done, in full.
   """
 end
